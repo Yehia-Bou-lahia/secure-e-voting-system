@@ -39,6 +39,8 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'channels',
     'voting',
+    'drf_yasg',
+    'auth_app',
 ]
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
@@ -123,3 +125,5 @@ CHANNEL_LAYERS = {
         'BACKEND': 'channels.layers.InMemoryChannelLayer',
     },
 }
+
+AUTH_USER_MODEL = 'auth_app.User'
