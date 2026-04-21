@@ -10,7 +10,7 @@ from rest_framework.views import APIView
 
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from .models import User
+from .models import User, Student, Candidate
 from .serializers import UserSerializer, UserRegisterSerializer, RegisterSerializer, StudentSerializer
 
 
@@ -68,12 +68,12 @@ class RegisterView(APIView):
 
 
 class StudentViewSet(viewsets.ModelViewSet):
-    queryset = User.objects.filter(role='student')
+    queryset = Student.objects.all()
     serializer_class = StudentSerializer
     permission_classes = [IsAuthenticated]
 
 
 class CandidateViewSet(viewsets.ModelViewSet):
-    queryset = User.objects.filter(role='candidate')
+    queryset = Candidate.objects.all()
     serializer_class = StudentSerializer
     permission_classes = [IsAuthenticated]
