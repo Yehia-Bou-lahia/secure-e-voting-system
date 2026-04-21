@@ -55,7 +55,7 @@ class Candidate(models.Model):
                                         upload_to='profile_pictures/')
     user = models.OneToOneField(User, on_delete=models.CASCADE)
     student = models.OneToOneField(Student, on_delete=models.CASCADE)
-    vote_count = models.IntegerField(default=0, verbose_name="Vote Count")  # حقل جديد
+    vote_count = models.IntegerField(default=0, verbose_name="Vote Count")
     created_at = models.DateTimeField(verbose_name='Created At', auto_now_add=True)
     updated_at = models.DateTimeField(verbose_name='Updated At', auto_now=True)
 
@@ -65,3 +65,42 @@ class Candidate(models.Model):
 
     def __str__(self) -> str:
         return f"Candidate: {self.student.name}"
+
+class ServerKey(models.Model):
+    private_key = models.TextField(verbose_name="Server Private Key (PEM)")
+    public_key = models.TextField(verbose_name="Server Public Key (PEM)")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Server Key"
+        verbose_name_plural = "Server Keys"
+
+    def __str__(self):
+        return f"Server keys created at {self.created_at}"
+
+class UsedNonce(models.Model):
+    nonce = models.CharField(max_length=255, unique=True, verbose_name="Unique nonce")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Used Nonce"
+        verbose_name_plural = "Used Nonces"
+
+    def __str__(self):
+        return self.nonce
+
+
+class Vote(models.Model):
+    voter = models.ForeignKey(Student, on_delete=models.CASCADE, related_name='votes')
+    candidate = models.ForeignKey(Candidate, on_delete=models.CASCADE, related_name='votes')
+    cipher_vote = models.TextField(verbose_name="Encrypted vote")
+    nonce = models.CharField(max_length=255, unique=True)
+    signature = models.TextField(verbose_name="Digital signature")
+    timestamp = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Vote"
+        verbose_name_plural = "Votes"
+
+    def __str__(self):
+        return f"Vote by {self.voter.name} for {self.candidate.student.name}"
