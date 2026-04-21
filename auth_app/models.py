@@ -3,16 +3,11 @@ from django.db import models
 import uuid
 
 USER_ROLES = (
-    ('student', 'Student',),
+    ('student', 'Student'),
     ('candidate', 'Candidate')
 )
 
-
-# Create your models here.
 class User(AbstractUser):
-    """
-    User model
-    """
     id = models.UUIDField(
         primary_key=True,
         default=uuid.uuid4,
@@ -31,8 +26,7 @@ class User(AbstractUser):
         verbose_name_plural = "Users"
 
     def __str__(self) -> str:
-        """ String representation """
-        return f"{self.username}: {str(self.email)}"
+        return f"{self.username}: {self.email}"
 
 
 class Student(models.Model):
@@ -41,6 +35,9 @@ class Student(models.Model):
                                         upload_to='profile_pictures/')
     name = models.CharField(max_length=100, verbose_name="Student Name")
     user = models.OneToOneField(User, on_delete=models.CASCADE)
+    # الحقول الجديدة للتصويت
+    has_voted = models.BooleanField(default=False, verbose_name="Has Voted")
+    public_key = models.TextField(blank=True, null=True, verbose_name="RSA Public Key")
     created_at = models.DateTimeField(verbose_name='Created At', auto_now_add=True)
     updated_at = models.DateTimeField(verbose_name='Updated At', auto_now=True)
 
@@ -58,5 +55,13 @@ class Candidate(models.Model):
                                         upload_to='profile_pictures/')
     user = models.OneToOneField(User, on_delete=models.CASCADE)
     student = models.OneToOneField(Student, on_delete=models.CASCADE)
+    vote_count = models.IntegerField(default=0, verbose_name="Vote Count")  # حقل جديد
     created_at = models.DateTimeField(verbose_name='Created At', auto_now_add=True)
     updated_at = models.DateTimeField(verbose_name='Updated At', auto_now=True)
+
+    class Meta:
+        verbose_name = "Candidate"
+        verbose_name_plural = "Candidates"
+
+    def __str__(self) -> str:
+        return f"Candidate: {self.student.name}"

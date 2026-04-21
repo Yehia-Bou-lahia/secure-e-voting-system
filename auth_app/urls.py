@@ -10,6 +10,6 @@ urlpatterns = [
     path('self', UserView.as_view(), name='user_self_details'),
     path('register/', RegisterView.as_view(), name='user_register')]
 router.register(r'student', StudentViewSet, basename='student_viewset')
-router.register(r'Candidate', CandidateViewSet, basename='candidate_viewset')
+router.register(r'candidate', CandidateViewSet, basename='candidate_viewset')
 
-urlpatterns = router.urls + urlpatterns
+urlpatterns = urlpatterns + router.urls

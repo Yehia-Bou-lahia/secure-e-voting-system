@@ -5,7 +5,7 @@ from drf_yasg.utils import swagger_serializer_method
 
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
-from auth_app.models import User, Student
+from auth_app.models import User, Student, Candidate
 
 
 class ProfileSerializer(serializers.Serializer):
@@ -97,5 +97,5 @@ class StudentSerializer(serializers.ModelSerializer):
 
 class CandidateSerializer(serializers.ModelSerializer):
     class Meta:
-        model = Student
+        model = Candidate
         fields = ('id', 'name', 'created_at', 'updated_at')
