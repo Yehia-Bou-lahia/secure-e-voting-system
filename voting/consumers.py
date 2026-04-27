@@ -2,18 +2,15 @@ import json
 from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
 from django.utils import timezone
-from datetime import datetime
-from django.conf import settings
-from auth_app.models import Student, Candidate, UsedNonce, Vote
+from auth_app.models import Student, Candidate, UsedNonce, Vote, ServerKey, ElectionSettings
 from voting.crypto import (
-    decrypt_long_text,   # نستخدم فك التشفير للنص الطويل
-    verify,              # التحقق من التوقيع
-    hash_message         # لتوليد التجزئة (اختياري، لكن verify تستخدمه داخلياً)
+    pem_to_public_numbers, pem_to_private_numbers,
+    decrypt_long_text, verify, generate_rsa_keypair
 )
+import base64
 
 class VotingConsumer(AsyncWebsocketConsumer):
     async def connect(self):
-        # هنا يمكن إضافة التحقق من JWT لاحقاً
         await self.accept()
         await self.send(text_data=json.dumps({
             "status": "connected",
@@ -26,7 +23,6 @@ class VotingConsumer(AsyncWebsocketConsumer):
     async def receive(self, text_data):
         try:
             data = json.loads(text_data)
-            # نتوقع رسالة من النوع "vote"
             if data.get('type') == 'vote':
                 await self.handle_vote(data)
             else:
@@ -41,7 +37,7 @@ class VotingConsumer(AsyncWebsocketConsumer):
         signature = data.get('signature')
 
         # 1. التحقق من وقت التصويت
-        if not self.is_within_election_time():
+        if not await self.is_within_election_time():
             await self.send(json.dumps({"status": "rejected", "reason": "Voting is not open at this time"}))
             return
 
@@ -56,10 +52,16 @@ class VotingConsumer(AsyncWebsocketConsumer):
             await self.send(json.dumps({"status": "rejected", "reason": "Invalid voter ID"}))
             return
 
-        # 4. التحقق من التوقيع
-        #    يجب أن يكون التوقيع على (cipher_vote + nonce)
+        # 4. التحقق من التوقيع (يجب أن يكون على cipher_vote + nonce)
         message_to_verify = cipher_vote + nonce
-        if not verify(message_to_verify, signature, student.public_key):
+        # نحول المفتاح العمومي المخزن كنص إلى (e,n)
+        try:
+            public_numbers = pem_to_public_numbers(student.public_key)
+        except Exception:
+            await self.send(json.dumps({"status": "rejected", "reason": "Invalid public key format"}))
+            return
+
+        if not verify(message_to_verify, signature, public_numbers):
             await self.send(json.dumps({"status": "rejected", "reason": "Invalid signature"}))
             return
 
@@ -68,43 +70,42 @@ class VotingConsumer(AsyncWebsocketConsumer):
             await self.send(json.dumps({"status": "rejected", "reason": "You have already voted"}))
             return
 
-        # 6. فك تشفير التصويت (باستخدام المفتاح الخاص للخادم)
-        #    نحتاج إلى تحميل المفتاح الخاص للخادم من قاعدة البيانات (سنضيف نموذج ServerKey)
-        server_private_key = await self.get_server_private_key()
-        if not server_private_key:
-            await self.send(json.dumps({"status": "error", "reason": "Server key not configured"}))
+        # 6. تحميل المفتاح الخاص للخادم وتحويله إلى (d,n)
+        server_key_obj = await self.get_server_key()
+        if not server_key_obj:
+            await self.send(json.dumps({"status": "rejected", "reason": "Server key not configured"}))
             return
 
         try:
-            candidate_name = decrypt_long_text(cipher_vote, server_private_key)
+            private_numbers = pem_to_private_numbers(server_key_obj.private_key)
+            decrypted_candidate = decrypt_long_text(cipher_vote, private_numbers)
         except Exception as e:
             await self.send(json.dumps({"status": "rejected", "reason": f"Decryption failed: {str(e)}"}))
             return
 
         # 7. البحث عن المرشح باسمه
-        candidate = await self.get_candidate_by_name(candidate_name)
+        candidate = await self.get_candidate_by_name(decrypted_candidate)
         if not candidate:
             await self.send(json.dumps({"status": "rejected", "reason": "Candidate not found"}))
             return
 
-        # 8. تسجيل التصويت (استخدام معاملة ذرية)
+        # 8. تسجيل التصويت
         success = await self.record_vote(student, candidate, cipher_vote, nonce, signature)
         if not success:
             await self.send(json.dumps({"status": "rejected", "reason": "Could not record vote (maybe already voted)"}))
             return
 
-        # 9. إرسال القبول
+        # 9. القبول
         await self.send(json.dumps({"status": "accepted", "message": "Your vote has been counted"}))
 
-    # -------------------- الدوال المساعدة (async مع database_sync_to_async) --------------------
+    # ---------- دوال مساعدة async مع database_sync_to_async ----------
     @database_sync_to_async
     def is_within_election_time(self):
-        # يمكن قراءة الوقت من settings أو من نموذج Election
+        settings = ElectionSettings.objects.first()
+        if not settings:
+            return False
         now = timezone.now()
-        start = datetime.fromisoformat(settings.ELECTION_START_TIME)
-        end = datetime.fromisoformat(settings.ELECTION_END_TIME)
-        # تأكد من جعل الوقت aware إذا لزم الأمر
-        return start <= now <= end
+        return settings.start_time <= now <= settings.end_time
 
     @database_sync_to_async
     def is_nonce_used(self, nonce):
@@ -118,17 +119,14 @@ class VotingConsumer(AsyncWebsocketConsumer):
             return None
 
     @database_sync_to_async
-    def get_server_private_key(self):
-        # سننشئ نموذج ServerKey يحوي المفتاح الخاص للخادم
-        from auth_app.models import ServerKey
+    def get_server_key(self):
         try:
-            return ServerKey.objects.get(id=1).private_key
+            return ServerKey.objects.first()
         except ServerKey.DoesNotExist:
             return None
 
     @database_sync_to_async
     def get_candidate_by_name(self, name):
-        # نفرض أن اسم المرشح مخزّن في student.name (لأن Candidate مرتبط بـ Student)
         try:
             student = Student.objects.get(name=name)
             return Candidate.objects.get(student=student)
@@ -140,15 +138,11 @@ class VotingConsumer(AsyncWebsocketConsumer):
         from django.db import transaction
         try:
             with transaction.atomic():
-                # منع التصويت المزدوج مجدداً (للتأكد)
                 if student.has_voted:
                     return False
-                # زيادة عداد المرشح
                 candidate.vote_count += 1
                 candidate.save()
-                # تسجيل nonce كمستخدم
                 UsedNonce.objects.create(nonce=nonce)
-                # تسجيل عملية التصويت
                 Vote.objects.create(
                     voter=student,
                     candidate=candidate,
@@ -156,7 +150,6 @@ class VotingConsumer(AsyncWebsocketConsumer):
                     nonce=nonce,
                     signature=signature
                 )
-                # تعليم الطالب بأنه صوّت
                 student.has_voted = True
                 student.save()
             return True
