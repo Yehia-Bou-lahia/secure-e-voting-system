@@ -104,3 +104,15 @@ class Vote(models.Model):
 
     def __str__(self):
         return f"Vote by {self.voter.name} for {self.candidate.student.name}"
+
+class ElectionSettings(models.Model):
+    start_time = models.DateTimeField(verbose_name="بداية التصويت")
+    end_time = models.DateTimeField(verbose_name="نهاية التصويت")
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "إعدادات الموعد"
+        verbose_name_plural = "إعدادات الموعد"
+
+    def __str__(self):
+        return f"التصويت من {self.start_time} إلى {self.end_time}"
