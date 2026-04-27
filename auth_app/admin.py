@@ -1,5 +1,5 @@
 from django.contrib import admin
-
+from .models import ElectionSettings
 from auth_app.models import User
 
 
@@ -13,3 +13,13 @@ class UserAdmin(admin.ModelAdmin):
         (None, {'fields': ('email', 'role')}),
         ('Permissions', {'fields': ('is_active', 'is_staff')}),
     )
+
+@admin.register(ElectionSettings)
+class ElectionSettingsAdmin(admin.ModelAdmin):
+    list_display = ('start_time', 'end_time', 'updated_at')
+    # منع إضافة أكثر من سجل (يجب أن يكون هناك سجل واحد فقط)
+    def has_add_permission(self, request):
+        # إذا كان هناك سجل موجود، لا تسمح بإضافة آخر
+        if ElectionSettings.objects.exists():
+            return False
+        return super().has_add_permission(request)
