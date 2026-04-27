@@ -1,7 +1,8 @@
 import random
 import hashlib
 import base64
-
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.backends import default_backend
 #======== دوال رياضية مساعدة=========
 def gcd(a, b):
     """القاسم المشترك الأكبر """
@@ -180,3 +181,20 @@ def decrypt_long_text(cipher_b64, private_key):
         block_bytes = decrypted_int.to_bytes((decrypted_int.bit_length() + 7) // 8, 'big')
         plain_bytes += block_bytes
     return plain_bytes.decode('utf-8')
+
+def pem_to_public_numbers(pem_key: str):
+    """
+    تحويل مفتاح عمومي بصيغة PEM إلى (e, n)
+    """
+    public_key = serialization.load_pem_public_key(pem_key.encode(), backend=default_backend())
+    numbers = public_key.public_numbers()
+    return (numbers.e, numbers.n)
+
+def pem_to_private_numbers(pem_key: str):
+    """
+    تحويل مفتاح خاص بصيغة PEM إلى (d, n)
+    """
+    private_key = serialization.load_pem_private_key(pem_key.encode(), password=None, backend=default_backend())
+    private_numbers = private_key.private_numbers()
+    public_numbers = private_numbers.public_numbers
+    return (private_numbers.d, public_numbers.n)
