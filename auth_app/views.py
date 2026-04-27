@@ -13,6 +13,8 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from .models import User, Student, Candidate
 from .serializers import UserSerializer, UserRegisterSerializer, RegisterSerializer, StudentSerializer
 
+from rest_framework.decorators import api_view, permission_classes
+
 
 # Create your views here.
 class UserView(APIView):
@@ -66,7 +68,6 @@ class RegisterView(APIView):
                     }
                 }, status=status.HTTP_201_CREATED)
 
-
 class StudentViewSet(viewsets.ModelViewSet):
     queryset = Student.objects.all()
     serializer_class = StudentSerializer
@@ -77,3 +78,14 @@ class CandidateViewSet(viewsets.ModelViewSet):
     queryset = Candidate.objects.all()
     serializer_class = StudentSerializer
     permission_classes = [IsAuthenticated]
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def results(request):
+    """
+    عرض النتائج الحالية للانتخابات: أسماء المرشحين وأصواتهم.
+    متاح للجميع.
+    """
+    candidates = Candidate.objects.select_related('student').all()
+    data = {candidate.student.name: candidate.vote_count for candidate in candidates}
+    return Response(data)
